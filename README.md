@@ -50,7 +50,7 @@ Rather than merely displaying raw AQI numbers, BreatheWise explains **what** peo
 
 ### 8. Household Profile & Settings
 - Granular vulnerability flags: Asthma/respiratory condition, young children, elderly family members, outdoor athletes.
-- Optional client-side Groq API key override stored securely in local browser session.
+- GROQ_API_KEY stored exclusively in backend server environment variables with automatic rule engine fallback.
 
 ---
 

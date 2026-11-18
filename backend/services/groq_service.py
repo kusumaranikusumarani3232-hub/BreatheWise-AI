@@ -31,8 +31,8 @@ class GroqService:
         self.api_key = settings.GROQ_API_KEY or os.environ.get("GROQ_API_KEY", "")
         self.default_model = settings.GROQ_MODEL or "llama-3.3-70b-versatile"
 
-    def _get_client(self, user_override_key: Optional[str] = None):
-        key = user_override_key or self.api_key or os.environ.get("GROQ_API_KEY", "")
+    def _get_client(self):
+        key = self.api_key or os.environ.get("GROQ_API_KEY", "")
         if key and GROQ_AVAILABLE:
             try:
                 return Groq(api_key=key)
@@ -45,10 +45,9 @@ class GroqService:
         message: str,
         history: List[ChatMessage] = [],
         aqi_context: Optional[Dict[str, Any]] = None,
-        user_profile: Optional[UserProfile] = None,
-        user_groq_key: Optional[str] = None
+        user_profile: Optional[UserProfile] = None
     ) -> AIChatResponse:
-        client = self._get_client(user_groq_key)
+        client = self._get_client()
 
         # Build context injection
         context_str = self._build_context_prompt(aqi_context, user_profile)
@@ -78,9 +77,9 @@ class GroqService:
                     model=self.default_model,
                     follow_up_suggestions=suggestions
                 )
-            except Exception as e:
+            except Exception:
                 # Fallback on rate limit, invalid key, or network error
-                print(f"[GroqService] Groq API call failed ({e}). Reverting to rule-based fallback.")
+                print("[GroqService] Groq API call encountered an error. Reverting to rule-based fallback.")
 
         # Fallback to intelligent rule-based engine
         fallback_reply = self._rule_based_reply(message, aqi_context, user_profile)

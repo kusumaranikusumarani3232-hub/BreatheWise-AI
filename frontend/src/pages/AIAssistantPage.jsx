@@ -23,7 +23,7 @@ const QUICK_PROMPTS = [
   "What is a Corsi-Rosenthal DIY air purifier?"
 ];
 
-export default function AIAssistantPage({ aqiData, userProfile, userGroqKey }) {
+export default function AIAssistantPage({ aqiData, userProfile }) {
   const [messages, setMessages] = useState(() => {
     return [
       {
@@ -74,8 +74,7 @@ export default function AIAssistantPage({ aqiData, userProfile, userGroqKey }) {
         query.trim(),
         messages.filter(m => m.role !== 'system'),
         aqiContext,
-        userProfile,
-        userGroqKey
+        userProfile
       );
 
       setMessages((prev) => [

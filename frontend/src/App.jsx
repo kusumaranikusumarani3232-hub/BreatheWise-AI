@@ -37,14 +37,6 @@ export default function App() {
     }
   });
 
-  const [userGroqKey, setUserGroqKey] = useState(() => {
-    try {
-      return localStorage.getItem("breathewise_groq_key") || "";
-    } catch {
-      return "";
-    }
-  });
-
   const {
     location,
     aqiData,
@@ -72,7 +64,6 @@ export default function App() {
           <AIAssistantPage
             aqiData={aqiData}
             userProfile={userProfile}
-            userGroqKey={userGroqKey}
           />
         );
       case 'daily-planner':
@@ -110,8 +101,6 @@ export default function App() {
           <SettingsPage
             userProfile={userProfile}
             setUserProfile={setUserProfile}
-            userGroqKey={userGroqKey}
-            setUserGroqKey={setUserGroqKey}
           />
         );
       default:

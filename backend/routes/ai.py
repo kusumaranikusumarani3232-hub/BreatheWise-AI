@@ -14,8 +14,7 @@ async def chat_with_assistant(request: AIChatRequest):
             message=request.message.strip(),
             history=request.history,
             aqi_context=request.aqi_context,
-            user_profile=request.user_profile,
-            user_groq_key=request.user_groq_key
+            user_profile=request.user_profile
         )
         return response
     except Exception as e:

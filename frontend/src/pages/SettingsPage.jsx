@@ -16,12 +16,9 @@ import {
 
 export default function SettingsPage({ 
   userProfile, 
-  setUserProfile, 
-  userGroqKey, 
-  setUserGroqKey 
+  setUserProfile 
 }) {
   const [profile, setProfile] = useState(userProfile);
-  const [groqKey, setGroqKey] = useState(userGroqKey || "");
   const [saved, setSaved] = useState(false);
 
   const handleToggle = (key) => {
@@ -34,14 +31,9 @@ export default function SettingsPage({
   const handleSave = (e) => {
     e.preventDefault();
     setUserProfile(profile);
-    setUserGroqKey(groqKey);
     try {
       localStorage.setItem("breathewise_user_profile", JSON.stringify(profile));
-      if (groqKey) {
-        localStorage.setItem("breathewise_groq_key", groqKey);
-      } else {
-        localStorage.removeItem("breathewise_groq_key");
-      }
+      localStorage.removeItem("breathewise_groq_key");
     } catch (err) {}
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
@@ -56,9 +48,7 @@ export default function SettingsPage({
       commute_mode: "mixed"
     };
     setProfile(defaultProfile);
-    setGroqKey("");
     setUserProfile(defaultProfile);
-    setUserGroqKey("");
     try {
       localStorage.removeItem("breathewise_user_profile");
       localStorage.removeItem("breathewise_groq_key");
@@ -212,27 +202,22 @@ export default function SettingsPage({
         <div className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-xs space-y-4">
           <div className="flex items-center gap-2 text-slate-800 font-bold text-base border-b border-slate-100 pb-3">
             <Key className="w-5 h-5 text-teal-600" />
-            <h3>GenAI Assistant Configuration</h3>
+            <h3>GenAI Assistant & Security Configuration</h3>
           </div>
 
           <div className="p-3.5 rounded-xl bg-teal-50/60 border border-teal-100 text-xs text-teal-900 leading-relaxed">
-            <strong>Free-Tier & Fallback Note:</strong> BreatheWise AI connects to the Groq API for rapid LLM inference. If the backend key is omitted or rate-limited, the application seamlessly switches to its expert rule-based reasoning engine.
+            <strong>Security & Privacy Architecture:</strong> The Groq API key is managed exclusively within backend server environment variables (<code className="bg-teal-100 px-1 py-0.5 rounded text-[11px]">GROQ_API_KEY</code>). All AI chat interactions are routed securely through the FastAPI backend proxy. No API keys are accepted, processed, or stored in the browser.
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Custom Groq API Key (Optional Client Override)
-            </label>
-            <input
-              type="password"
-              value={groqKey}
-              onChange={(e) => setGroqKey(e.target.value)}
-              placeholder="gsk_..."
-              className="w-full px-3.5 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-teal-500 font-mono text-slate-800"
-            />
-            <p className="text-[11px] text-slate-400 mt-1">
-              Your key remains in your local browser session and is only forwarded to the proxy when asking questions.
-            </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-slate-600">
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+              <span className="font-bold text-slate-800 block mb-1">Backend LLM Engine:</span>
+              <span>Groq API with open-weight models (<code className="text-teal-700">llama-3.3-70b-versatile</code> / <code className="text-teal-700">llama-3.1-8b-instant</code>).</span>
+            </div>
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+              <span className="font-bold text-slate-800 block mb-1">Built-in Rule Fallback:</span>
+              <span>Active and fully functional automatically whenever the backend API key is omitted or during network outages.</span>
+            </div>
           </div>
         </div>
 

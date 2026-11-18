@@ -160,7 +160,7 @@ export async function getCurrentAQI(lat, lon, city = '', country = '') {
   };
 }
 
-export async function sendAIChat(message, history, aqiContext, userProfile, userGroqKey) {
+export async function sendAIChat(message, history, aqiContext, userProfile) {
   try {
     const res = await fetch(`${API_BASE}/api/ai/chat`, {
       method: 'POST',
@@ -169,8 +169,7 @@ export async function sendAIChat(message, history, aqiContext, userProfile, user
         message,
         history,
         aqi_context: aqiContext,
-        user_profile: userProfile,
-        user_groq_key: userGroqKey
+        user_profile: userProfile
       })
     });
     if (res.ok) {

@@ -65,7 +65,6 @@ class AIChatRequest(BaseModel):
     history: List[ChatMessage] = []
     aqi_context: Optional[Dict[str, Any]] = None
     user_profile: Optional[UserProfile] = None
-    user_groq_key: Optional[str] = None  # UI override if user enters own key
 
 class AIChatResponse(BaseModel):
     reply: str
