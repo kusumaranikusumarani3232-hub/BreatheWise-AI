@@ -30,6 +30,8 @@ class GroqService:
     def __init__(self):
         self.api_key = settings.GROQ_API_KEY or os.environ.get("GROQ_API_KEY", "")
         self.default_model = settings.GROQ_MODEL or "llama-3.3-70b-versatile"
+        fallback_str = getattr(settings, "GROQ_FALLBACK_MODELS", "qwen/qwen3.8-27b,openai/gpt-oss-120b,llama-3.1-8b-instant")
+        self.fallback_models = [m.strip() for m in fallback_str.split(",") if m.strip()]
 
     def _get_client(self):
         key = self.api_key or os.environ.get("GROQ_API_KEY", "")
@@ -52,34 +54,38 @@ class GroqService:
         # Build context injection
         context_str = self._build_context_prompt(aqi_context, user_profile)
         
-        # If client is available, try Groq
+        # If client is available, try primary model followed by configured fallback models
         if client:
-            try:
-                messages = [
-                    {"role": "system", "content": f"{SYSTEM_PROMPT}\n\nCURRENT CONTEXT:\n{context_str}"}
-                ]
-                # Include last few history turns
-                for h in history[-6:]:
-                    messages.append({"role": h.role, "content": h.content})
-                messages.append({"role": "user", "content": message})
+            candidate_models = [self.default_model] + [m for m in self.fallback_models if m != self.default_model]
+            messages = [
+                {"role": "system", "content": f"{SYSTEM_PROMPT}\n\nCURRENT CONTEXT:\n{context_str}"}
+            ]
+            for h in history[-6:]:
+                messages.append({"role": h.role, "content": h.content})
+            messages.append({"role": "user", "content": message})
 
-                chat_completion = client.chat.completions.create(
-                    messages=messages,
-                    model=self.default_model,
-                    temperature=0.6,
-                    max_tokens=850,
-                )
-                reply = chat_completion.choices[0].message.content
-                suggestions = self._generate_suggestions(message, aqi_context)
-                return AIChatResponse(
-                    reply=reply,
-                    mode="groq",
-                    model=self.default_model,
-                    follow_up_suggestions=suggestions
-                )
-            except Exception:
-                # Fallback on rate limit, invalid key, or network error
-                print("[GroqService] Groq API call encountered an error. Reverting to rule-based fallback.")
+            for candidate in candidate_models:
+                try:
+                    chat_completion = client.chat.completions.create(
+                        messages=messages,
+                        model=candidate,
+                        temperature=0.6,
+                        max_tokens=850,
+                    )
+                    reply = chat_completion.choices[0].message.content
+                    if reply and reply.strip():
+                        suggestions = self._generate_suggestions(message, aqi_context)
+                        return AIChatResponse(
+                            reply=reply,
+                            mode="groq",
+                            model=candidate,
+                            follow_up_suggestions=suggestions
+                        )
+                except Exception:
+                    # Model not available or rate limited on candidate, continue to next fallback candidate
+                    continue
+
+            print("[GroqService] Live Groq inference unavailable on all candidate models. Reverting to rule-based fallback.")
 
         # Fallback to intelligent rule-based engine
         fallback_reply = self._rule_based_reply(message, aqi_context, user_profile)
