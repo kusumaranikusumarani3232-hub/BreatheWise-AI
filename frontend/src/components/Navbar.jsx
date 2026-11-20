@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, memo } from 'react';
 import { 
   Wind, MapPin, Search, Navigation, RefreshCw, AlertTriangle, 
-  CheckCircle2, Info, X, ChevronDown, Menu 
+  X, Menu 
 } from 'lucide-react';
 import { searchLocations } from '../services/api';
 
@@ -14,7 +14,7 @@ const QUICK_CITIES = [
   { name: "Los Angeles", country: "United States", latitude: 34.05, longitude: -118.24 },
 ];
 
-export default function Navbar({ 
+function NavbarComponent({ 
   location, 
   aqiData, 
   loading, 
@@ -215,3 +215,5 @@ export default function Navbar({
     </header>
   );
 }
+
+export default memo(NavbarComponent);

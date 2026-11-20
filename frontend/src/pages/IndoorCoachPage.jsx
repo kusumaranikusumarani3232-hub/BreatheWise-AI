@@ -1,15 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   ShieldCheck, 
-  Wind, 
-  Flame, 
-  AlertTriangle, 
   CheckCircle2, 
   Wrench, 
-  Info, 
-  Sparkles,
-  ChevronDown,
-  Layers,
   ThermometerSnowflake,
   CookingPot,
   Ban
@@ -35,17 +28,17 @@ export default function IndoorCoachPage({ aqiData }) {
     }));
   };
 
-  const totalScore = INDOOR_CHECKLIST.reduce((acc, item) => {
-    return acc + (checkedItems[item.id] ? item.points : 0);
-  }, 0);
+  const totalScore = useMemo(() => {
+    return INDOOR_CHECKLIST.reduce((acc, item) => {
+      return acc + (checkedItems[item.id] ? item.points : 0);
+    }, 0);
+  }, [checkedItems]);
 
-  const getScoreRating = (score) => {
-    if (score >= 85) return { label: "Excellent Indoor Air Fortress", color: "text-emerald-700 bg-emerald-50 border-emerald-200" };
-    if (score >= 60) return { label: "Moderate Protection (Gaps Exist)", color: "text-amber-700 bg-amber-50 border-amber-200" };
+  const rating = useMemo(() => {
+    if (totalScore >= 85) return { label: "Excellent Indoor Air Fortress", color: "text-emerald-700 bg-emerald-50 border-emerald-200" };
+    if (totalScore >= 60) return { label: "Moderate Protection (Gaps Exist)", color: "text-amber-700 bg-amber-50 border-amber-200" };
     return { label: "High Vulnerability to Outdoor Infiltration", color: "text-red-700 bg-red-50 border-red-200" };
-  };
-
-  const rating = getScoreRating(totalScore);
+  }, [totalScore]);
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">

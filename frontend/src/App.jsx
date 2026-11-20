@@ -1,15 +1,26 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, Suspense, lazy } from 'react';
 import Navbar from './components/Navbar';
 import Sidebar from './components/Sidebar';
 import DashboardPage from './pages/DashboardPage';
-import AIAssistantPage from './pages/AIAssistantPage';
-import DailyPlannerPage from './pages/DailyPlannerPage';
-import IndoorCoachPage from './pages/IndoorCoachPage';
-import EcoAlternativesPage from './pages/EcoAlternativesPage';
-import ImpactTrackerPage from './pages/ImpactTrackerPage';
-import CommunityPage from './pages/CommunityPage';
-import SettingsPage from './pages/SettingsPage';
 import { useAirQuality } from './hooks/useAirQuality';
+
+// Code-splitting secondary pages to slash initial bundle size and speed up first paint
+const AIAssistantPage = lazy(() => import('./pages/AIAssistantPage'));
+const DailyPlannerPage = lazy(() => import('./pages/DailyPlannerPage'));
+const IndoorCoachPage = lazy(() => import('./pages/IndoorCoachPage'));
+const EcoAlternativesPage = lazy(() => import('./pages/EcoAlternativesPage'));
+const ImpactTrackerPage = lazy(() => import('./pages/ImpactTrackerPage'));
+const CommunityPage = lazy(() => import('./pages/CommunityPage'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+
+function PageLoadingFallback() {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[40vh] text-slate-400">
+      <div className="w-8 h-8 border-3 border-teal-600 border-t-transparent rounded-full animate-spin mb-3" />
+      <p className="text-xs font-medium">Loading section...</p>
+    </div>
+  );
+}
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -48,6 +59,10 @@ export default function App() {
     useBrowserGeolocation
   } = useAirQuality();
 
+  const toggleSidebar = useCallback(() => {
+    setIsSidebarOpen(prev => !prev);
+  }, []);
+
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':
@@ -61,47 +76,61 @@ export default function App() {
         );
       case 'ai-assistant':
         return (
-          <AIAssistantPage
-            aqiData={aqiData}
-            userProfile={userProfile}
-          />
+          <Suspense fallback={<PageLoadingFallback />}>
+            <AIAssistantPage
+              aqiData={aqiData}
+              userProfile={userProfile}
+            />
+          </Suspense>
         );
       case 'daily-planner':
         return (
-          <DailyPlannerPage
-            aqiData={aqiData}
-            userProfile={userProfile}
-          />
+          <Suspense fallback={<PageLoadingFallback />}>
+            <DailyPlannerPage
+              aqiData={aqiData}
+              userProfile={userProfile}
+            />
+          </Suspense>
         );
       case 'indoor-coach':
         return (
-          <IndoorCoachPage
-            aqiData={aqiData}
-          />
+          <Suspense fallback={<PageLoadingFallback />}>
+            <IndoorCoachPage
+              aqiData={aqiData}
+            />
+          </Suspense>
         );
       case 'eco-alternatives':
         return (
-          <EcoAlternativesPage
-            aqiData={aqiData}
-            setActiveTab={setActiveTab}
-          />
+          <Suspense fallback={<PageLoadingFallback />}>
+            <EcoAlternativesPage
+              aqiData={aqiData}
+              setActiveTab={setActiveTab}
+            />
+          </Suspense>
         );
       case 'impact-tracker':
         return (
-          <ImpactTrackerPage />
+          <Suspense fallback={<PageLoadingFallback />}>
+            <ImpactTrackerPage />
+          </Suspense>
         );
       case 'community':
         return (
-          <CommunityPage
-            aqiData={aqiData}
-          />
+          <Suspense fallback={<PageLoadingFallback />}>
+            <CommunityPage
+              aqiData={aqiData}
+            />
+          </Suspense>
         );
       case 'settings':
         return (
-          <SettingsPage
-            userProfile={userProfile}
-            setUserProfile={setUserProfile}
-          />
+          <Suspense fallback={<PageLoadingFallback />}>
+            <SettingsPage
+              userProfile={userProfile}
+              setUserProfile={setUserProfile}
+            />
+          </Suspense>
         );
       default:
         return (
@@ -136,7 +165,7 @@ export default function App() {
           selectCity={selectCity}
           useBrowserGeolocation={useBrowserGeolocation}
           isLocating={isLocating}
-          toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+          toggleSidebar={toggleSidebar}
         />
 
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { 
   CloudRain, 
   Thermometer, 
@@ -7,7 +7,6 @@ import {
   Sparkles, 
   CalendarClock, 
   ShieldCheck, 
-  CheckCircle2, 
   AlertTriangle,
   Flame,
   Activity,
@@ -17,7 +16,27 @@ import AQIBadge from '../components/AQIBadge';
 import MetricCard from '../components/MetricCard';
 import TrendChart from '../components/TrendChart';
 
+// Pure helper moved outside component to avoid recreation on every render
+function getPm25Status(val) {
+  if (val === undefined || val === null) return { text: "No Data", color: "bg-slate-100 text-slate-600" };
+  if (val <= 12) return { text: "WHO Safe", color: "bg-emerald-100 text-emerald-800" };
+  if (val <= 35.4) return { text: "Moderate", color: "bg-amber-100 text-amber-800" };
+  if (val <= 55.4) return { text: "Unhealthy for Sensitive", color: "bg-orange-100 text-orange-800" };
+  if (val <= 150.4) return { text: "Unhealthy", color: "bg-red-100 text-red-800" };
+  return { text: "Severe Inversion", color: "bg-rose-900 text-rose-100" };
+}
+
 export default function DashboardPage({ aqiData, loading, setActiveTab, userProfile }) {
+  const aqi = aqiData?.aqi || 0;
+  const pm25 = aqiData?.pm2_5;
+  const pm10 = aqiData?.pm10;
+  const temp = aqiData?.temperature;
+  const hum = aqiData?.humidity;
+  const no2 = aqiData?.nitrogen_dioxide;
+  const co = aqiData?.carbon_monoxide;
+
+  const pm25Status = useMemo(() => getPm25Status(pm25), [pm25]);
+
   if (loading && !aqiData) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[50vh] text-slate-400">
@@ -26,27 +45,6 @@ export default function DashboardPage({ aqiData, loading, setActiveTab, userProf
       </div>
     );
   }
-
-  const aqi = aqiData?.aqi || 0;
-  const pm25 = aqiData?.pm2_5;
-  const pm10 = aqiData?.pm10;
-  const temp = aqiData?.temperature;
-  const hum = aqiData?.humidity;
-  const no2 = aqiData?.nitrogen_dioxide;
-  const co = aqiData?.carbon_monoxide;
-  const o3 = aqiData?.ozone;
-
-  // Evaluate status tags
-  const getPm25Status = (val) => {
-    if (val === undefined || val === null) return { text: "No Data", color: "bg-slate-100 text-slate-600" };
-    if (val <= 12) return { text: "WHO Safe", color: "bg-emerald-100 text-emerald-800" };
-    if (val <= 35.4) return { text: "Moderate", color: "bg-amber-100 text-amber-800" };
-    if (val <= 55.4) return { text: "Unhealthy for Sensitive", color: "bg-orange-100 text-orange-800" };
-    if (val <= 150.4) return { text: "Unhealthy", color: "bg-red-100 text-red-800" };
-    return { text: "Severe Inversion", color: "bg-rose-900 text-rose-100" };
-  };
-
-  const pm25Status = getPm25Status(pm25);
 
   return (
     <div className="space-y-6">

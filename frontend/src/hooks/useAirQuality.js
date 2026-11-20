@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { getCurrentAQI, searchLocations } from '../services/api';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { getCurrentAQI } from '../services/api';
 
 const DEFAULT_LOCATION = {
   name: "Delhi",
@@ -23,6 +23,10 @@ export function useAirQuality() {
   const [error, setError] = useState(null);
   const [isLocating, setIsLocating] = useState(false);
 
+  // Keep a ref to latest location to stabilize refresh
+  const locationRef = useRef(location);
+  locationRef.current = location;
+
   const fetchAQI = useCallback(async (loc) => {
     setLoading(true);
     setError(null);
@@ -44,16 +48,30 @@ export function useAirQuality() {
     } catch (e) {}
   }, [location, fetchAQI]);
 
-  const selectCity = (loc) => {
-    setLocation({
-      name: loc.name,
-      country: loc.country || '',
-      latitude: loc.latitude,
-      longitude: loc.longitude
+  const selectCity = useCallback((loc) => {
+    // Avoid redundant state updates if coordinates are practically identical
+    setLocation(prev => {
+      if (
+        Math.abs(prev.latitude - loc.latitude) < 0.0001 &&
+        Math.abs(prev.longitude - loc.longitude) < 0.0001 &&
+        prev.name === loc.name
+      ) {
+        return prev;
+      }
+      return {
+        name: loc.name,
+        country: loc.country || '',
+        latitude: loc.latitude,
+        longitude: loc.longitude
+      };
     });
-  };
+  }, []);
 
-  const useBrowserGeolocation = () => {
+  const refresh = useCallback(() => {
+    fetchAQI(locationRef.current);
+  }, [fetchAQI]);
+
+  const useBrowserGeolocation = useCallback(() => {
     if (!navigator.geolocation) {
       alert("Geolocation is not supported by your browser.");
       return;
@@ -76,7 +94,6 @@ export function useAirQuality() {
             detectedCountry = data.countryName || "";
           }
         } catch (e) {
-          // Fallback to coordinates
           detectedCity = `Lat ${latitude.toFixed(2)}, Lon ${longitude.toFixed(2)}`;
         }
 
@@ -96,7 +113,7 @@ export function useAirQuality() {
       },
       { timeout: 10000, enableHighAccuracy: false }
     );
-  };
+  }, []);
 
   return {
     location,
@@ -104,7 +121,7 @@ export function useAirQuality() {
     loading,
     error,
     isLocating,
-    refresh: () => fetchAQI(location),
+    refresh,
     selectCity,
     useBrowserGeolocation
   };

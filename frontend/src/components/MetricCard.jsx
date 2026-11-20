@@ -1,7 +1,6 @@
-import React from 'react';
-import { HelpCircle } from 'lucide-react';
+import React, { memo } from 'react';
 
-export default function MetricCard({ 
+function MetricCardComponent({ 
   icon: Icon, 
   label, 
   value, 
@@ -42,3 +41,5 @@ export default function MetricCard({
     </div>
   );
 }
+
+export default memo(MetricCardComponent);

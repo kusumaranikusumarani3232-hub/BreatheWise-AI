@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { 
   Settings, 
   UserCheck, 
@@ -7,7 +7,6 @@ import {
   RotateCcw, 
   Save, 
   Check, 
-  Info,
   HeartPulse,
   Baby,
   Users,
@@ -21,12 +20,12 @@ export default function SettingsPage({
   const [profile, setProfile] = useState(userProfile);
   const [saved, setSaved] = useState(false);
 
-  const handleToggle = (key) => {
+  const handleToggle = useCallback((key) => {
     setProfile(prev => ({
       ...prev,
       [key]: !prev[key]
     }));
-  };
+  }, []);
 
   const handleSave = (e) => {
     e.preventDefault();
@@ -39,7 +38,7 @@ export default function SettingsPage({
     setTimeout(() => setSaved(false), 2500);
   };
 
-  const handleReset = () => {
+  const handleReset = useCallback(() => {
     const defaultProfile = {
       has_asthma_respiratory: false,
       has_children: false,
@@ -55,7 +54,7 @@ export default function SettingsPage({
     } catch (err) {}
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
-  };
+  }, [setUserProfile]);
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">

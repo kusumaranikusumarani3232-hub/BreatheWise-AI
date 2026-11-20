@@ -1,5 +1,4 @@
 import os
-import re
 from typing import Dict, Any, List, Optional
 from config import settings
 from models.schemas import AIChatResponse, ChatMessage, UserProfile

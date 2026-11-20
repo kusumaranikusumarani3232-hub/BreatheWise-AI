@@ -1,8 +1,7 @@
 import datetime
 from fastapi import APIRouter
-from typing import List
 from models.schemas import (
-    ImpactSummaryRequest, ImpactSummaryResponse, WeeklyImpactPoint, LoggedAction
+    ImpactSummaryRequest, ImpactSummaryResponse, WeeklyImpactPoint
 )
 
 router = APIRouter(prefix="/api/impact", tags=["Impact Tracker"])
@@ -72,6 +71,7 @@ async def calculate_impact_summary(request: ImpactSummaryRequest):
     
     # Generate past 7 days breakdown
     today = datetime.date.today()
+    today_name = today.strftime("%a")
     days_map = {}
     for i in range(6, -1, -1):
         d = today - datetime.timedelta(days=i)
@@ -86,14 +86,13 @@ async def calculate_impact_summary(request: ImpactSummaryRequest):
         
         # Attribute to day
         try:
-            act_date = datetime.datetime.strptime(act.date, "%Y-%m-%d").date()
+            act_date = datetime.date.fromisoformat(act.date[:10])
             day_name = act_date.strftime("%a")
             if day_name in days_map:
                 days_map[day_name]["co2"] += act.co2_saved_kg
                 days_map[day_name]["count"] += 1
         except Exception:
             # Default to today
-            today_name = today.strftime("%a")
             if today_name in days_map:
                 days_map[today_name]["co2"] += act.co2_saved_kg
                 days_map[today_name]["count"] += 1

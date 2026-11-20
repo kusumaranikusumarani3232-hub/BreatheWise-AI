@@ -1,7 +1,7 @@
-import React from 'react';
-import { AlertCircle, ShieldAlert, CheckCircle2, Wind, Eye } from 'lucide-react';
+import React, { memo } from 'react';
+import { AlertCircle, ShieldAlert, CheckCircle2 } from 'lucide-react';
 
-export default function AQIBadge({ aqiData }) {
+function AQIBadgeComponent({ aqiData }) {
   if (!aqiData) return null;
 
   const aqi = aqiData.aqi || 0;
@@ -124,3 +124,5 @@ export default function AQIBadge({ aqiData }) {
     </div>
   );
 }
+
+export default memo(AQIBadgeComponent);

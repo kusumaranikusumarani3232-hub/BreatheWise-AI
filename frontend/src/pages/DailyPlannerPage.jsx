@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   CalendarClock, 
   Sun, 
@@ -11,16 +11,25 @@ import {
   CheckCircle2, 
   RefreshCw, 
   HelpCircle,
-  Clock,
-  Sparkles
+  Clock
 } from 'lucide-react';
 import { getDailyPlanner } from '../services/api';
+
+function CautionBadge({ level }) {
+  if (level === 'high') {
+    return <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-800 border border-red-200">High Caution</span>;
+  }
+  if (level === 'medium') {
+    return <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">Moderate Caution</span>;
+  }
+  return <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">Optimal Window</span>;
+}
 
 export default function DailyPlannerPage({ aqiData, userProfile }) {
   const [plan, setPlan] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchPlan = async () => {
+  const fetchPlan = useCallback(async () => {
     if (!aqiData) return;
     setLoading(true);
     try {
@@ -37,11 +46,11 @@ export default function DailyPlannerPage({ aqiData, userProfile }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [aqiData, userProfile]);
 
   useEffect(() => {
     fetchPlan();
-  }, [aqiData, userProfile]);
+  }, [fetchPlan]);
 
   if (loading && !plan) {
     return (
@@ -51,16 +60,6 @@ export default function DailyPlannerPage({ aqiData, userProfile }) {
       </div>
     );
   }
-
-  const getCautionBadge = (level) => {
-    if (level === 'high') {
-      return <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-800 border border-red-200">High Caution</span>;
-    }
-    if (level === 'medium') {
-      return <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">Moderate Caution</span>;
-    }
-    return <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">Optimal Window</span>;
-  };
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
@@ -136,7 +135,7 @@ export default function DailyPlannerPage({ aqiData, userProfile }) {
                     <Sun className="w-5 h-5" />
                     <span className="font-bold text-sm text-slate-900">{plan.morning_routine.time_window}</span>
                   </div>
-                  {getCautionBadge(plan.morning_routine.caution_level)}
+                  <CautionBadge level={plan.morning_routine.caution_level} />
                 </div>
 
                 <h4 className="font-bold text-base text-slate-800 mb-2">{plan.morning_routine.title}</h4>
@@ -161,7 +160,7 @@ export default function DailyPlannerPage({ aqiData, userProfile }) {
                     <Sunset className="w-5 h-5" />
                     <span className="font-bold text-sm text-slate-900">{plan.afternoon_routine.time_window}</span>
                   </div>
-                  {getCautionBadge(plan.afternoon_routine.caution_level)}
+                  <CautionBadge level={plan.afternoon_routine.caution_level} />
                 </div>
 
                 <h4 className="font-bold text-base text-slate-800 mb-2">{plan.afternoon_routine.title}</h4>
@@ -186,7 +185,7 @@ export default function DailyPlannerPage({ aqiData, userProfile }) {
                     <Moon className="w-5 h-5" />
                     <span className="font-bold text-sm text-slate-900">{plan.evening_routine.time_window}</span>
                   </div>
-                  {getCautionBadge(plan.evening_routine.caution_level)}
+                  <CautionBadge level={plan.evening_routine.caution_level} />
                 </div>
 
                 <h4 className="font-bold text-base text-slate-800 mb-2">{plan.evening_routine.title}</h4>

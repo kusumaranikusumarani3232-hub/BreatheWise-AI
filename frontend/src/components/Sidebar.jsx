@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, memo } from 'react';
 import { 
   LayoutDashboard, 
   Bot, 
@@ -24,11 +24,14 @@ const NAV_ITEMS = [
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
-export default function Sidebar({ activeTab, setActiveTab, isOpen, setIsOpen, userProfile }) {
-  const activeSensitivities = [];
-  if (userProfile?.has_asthma_respiratory) activeSensitivities.push("Asthma Alert");
-  if (userProfile?.has_children) activeSensitivities.push("Children");
-  if (userProfile?.has_elderly) activeSensitivities.push("Seniors");
+function SidebarComponent({ activeTab, setActiveTab, isOpen, setIsOpen, userProfile }) {
+  const activeSensitivities = useMemo(() => {
+    const list = [];
+    if (userProfile?.has_asthma_respiratory) list.push("Asthma Alert");
+    if (userProfile?.has_children) list.push("Children");
+    if (userProfile?.has_elderly) list.push("Seniors");
+    return list;
+  }, [userProfile?.has_asthma_respiratory, userProfile?.has_children, userProfile?.has_elderly]);
 
   return (
     <>
@@ -136,3 +139,5 @@ export default function Sidebar({ activeTab, setActiveTab, isOpen, setIsOpen, us
     </>
   );
 }
+
+export default memo(SidebarComponent);

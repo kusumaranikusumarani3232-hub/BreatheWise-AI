@@ -1,15 +1,91 @@
 /**
- * BreatheWise AI Centralized API Service
+ * BreatheWise AI Centralized API Service with In-Memory Caching & Request Deduping
  */
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
+// In-Memory Client TTL Caches to eliminate redundant network roundtrips
+const cache = {
+  search: new Map(),        // key -> { data, expiry }
+  aqi: new Map(),           // lat_lon -> { data, expiry }
+  planner: new Map(),       // city_aqi_profile -> { data, expiry }
+  shareCard: new Map(),     // city_aqi -> { data, expiry }
+  staticPresets: null,
+  staticChallenges: null,
+  staticTips: null,
+};
+
+const TTL = {
+  SEARCH: 10 * 60 * 1000,    // 10 minutes
+  AQI: 3 * 60 * 1000,        // 3 minutes
+  PLANNER: 5 * 60 * 1000,    // 5 minutes
+  SHARE_CARD: 30 * 60 * 1000 // 30 minutes
+};
+
+// Helper: Standardized fallback categories (DRY)
+function getAqiCategoryFallback(aqi) {
+  if (aqi > 200) {
+    return {
+      category: "Very Unhealthy",
+      category_level: "very_unhealthy",
+      color: "#a855f7",
+      bg_color: "bg-purple-50 text-purple-800 border-purple-200",
+      health_guidance: "Health alert: Inversion trapping smog. Avoid outdoor exercise and seal windows."
+    };
+  }
+  if (aqi > 150) {
+    return {
+      category: "Unhealthy",
+      category_level: "unhealthy",
+      color: "#ef4444",
+      bg_color: "bg-red-50 text-red-800 border-red-200",
+      health_guidance: "Everyone may experience effects. Use N95 masks outdoors."
+    };
+  }
+  if (aqi > 100) {
+    return {
+      category: "Unhealthy for Sensitive Groups",
+      category_level: "unhealthy_sensitive",
+      color: "#f97316",
+      bg_color: "bg-orange-50 text-orange-800 border-orange-200",
+      health_guidance: "Sensitive individuals should reduce heavy exertion outdoors."
+    };
+  }
+  if (aqi > 50) {
+    return {
+      category: "Moderate",
+      category_level: "moderate",
+      color: "#eab308",
+      bg_color: "bg-amber-50 text-amber-800 border-amber-200",
+      health_guidance: "Acceptable air quality for most individuals."
+    };
+  }
+  return {
+    category: "Good",
+    category_level: "good",
+    color: "#10b981",
+    bg_color: "bg-emerald-50 text-emerald-800 border-emerald-200",
+    health_guidance: "Air quality is satisfactory. Safe for outdoor routines."
+  };
+}
+
 export async function searchLocations(query) {
+  const q = (query || '').trim().toLowerCase();
+  if (!q) return [];
+
+  // Check cache
+  const cached = cache.search.get(q);
+  if (cached && Date.now() < cached.expiry) {
+    return cached.data;
+  }
+
   try {
     const res = await fetch(`${API_BASE}/api/aqi/search?q=${encodeURIComponent(query)}`);
     if (res.ok) {
       const data = await res.json();
-      return data.results || [];
+      const results = data.results || [];
+      cache.search.set(q, { data: results, expiry: Date.now() + TTL.SEARCH });
+      return results;
     }
   } catch (err) {
     console.warn("Backend search failed, querying Open-Meteo directly:", err);
@@ -20,7 +96,7 @@ export async function searchLocations(query) {
     const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=6&language=en&format=json`);
     if (res.ok) {
       const data = await res.json();
-      return (data.results || []).map(item => ({
+      const results = (data.results || []).map(item => ({
         id: item.id,
         name: item.name,
         country: item.country || '',
@@ -29,6 +105,8 @@ export async function searchLocations(query) {
         longitude: item.longitude,
         timezone: item.timezone || 'UTC'
       }));
+      cache.search.set(q, { data: results, expiry: Date.now() + TTL.SEARCH });
+      return results;
     }
   } catch (directErr) {
     console.error("Direct geocoding error:", directErr);
@@ -37,12 +115,24 @@ export async function searchLocations(query) {
 }
 
 export async function getCurrentAQI(lat, lon, city = '', country = '') {
+  const cacheKey = `${Number(lat).toFixed(2)}_${Number(lon).toFixed(2)}`;
+  const cached = cache.aqi.get(cacheKey);
+  if (cached && Date.now() < cached.expiry) {
+    // If a specific city name was passed, maintain it
+    if (city && cached.data.city !== city) {
+      return { ...cached.data, city, country: country || cached.data.country };
+    }
+    return cached.data;
+  }
+
   try {
     const res = await fetch(
       `${API_BASE}/api/aqi/current?lat=${lat}&lon=${lon}&city=${encodeURIComponent(city)}&country=${encodeURIComponent(country)}`
     );
     if (res.ok) {
-      return await res.json();
+      const data = await res.json();
+      cache.aqi.set(cacheKey, { data, expiry: Date.now() + TTL.AQI });
+      return data;
     }
   } catch (err) {
     console.warn("Backend AQI failed, querying Open-Meteo directly:", err);
@@ -61,33 +151,7 @@ export async function getCurrentAQI(lat, lon, city = '', country = '') {
       const currentAq = aq.current || {};
       const aqi = currentAq.us_aqi || Math.round((currentAq.pm2_5 || 25) * 2.1);
       
-      let category = "Good";
-      let color = "#10b981";
-      let bg_color = "bg-emerald-50 text-emerald-800 border-emerald-200";
-      let health_guidance = "Air quality is satisfactory. Safe for outdoor routines.";
-
-      if (aqi > 200) {
-        category = "Very Unhealthy";
-        color = "#a855f7";
-        bg_color = "bg-purple-50 text-purple-800 border-purple-200";
-        health_guidance = "Health alert: Inversion trapping smog. Avoid outdoor exercise and seal windows.";
-      } else if (aqi > 150) {
-        category = "Unhealthy";
-        color = "#ef4444";
-        bg_color = "bg-red-50 text-red-800 border-red-200";
-        health_guidance = "Everyone may experience effects. Use N95 masks outdoors.";
-      } else if (aqi > 100) {
-        category = "Unhealthy for Sensitive Groups";
-        color = "#f97316";
-        bg_color = "bg-orange-50 text-orange-800 border-orange-200";
-        health_guidance = "Sensitive individuals should reduce heavy exertion outdoors.";
-      } else if (aqi > 50) {
-        category = "Moderate";
-        color = "#eab308";
-        bg_color = "bg-amber-50 text-amber-800 border-amber-200";
-        health_guidance = "Acceptable air quality for most individuals.";
-      }
-
+      const meta = getAqiCategoryFallback(aqi);
       const hourly = aq.hourly || {};
       const times = hourly.time || [];
       const pm25s = hourly.pm2_5 || [];
@@ -98,29 +162,29 @@ export async function getCurrentAQI(lat, lon, city = '', country = '') {
       for (let i = 0; i < times.length; i += 2) {
         hourly_trends.push({
           time: times[i],
-          pm2_5: pm25s[i] || null,
-          pm10: pm10s[i] || null,
-          us_aqi: aqis[i] || Math.round((pm25s[i] || 20) * 2)
+          pm2_5: pm25s[i] != null ? pm25s[i] : null,
+          pm10: pm10s[i] != null ? pm10s[i] : null,
+          us_aqi: aqis[i] != null ? aqis[i] : Math.round((pm25s[i] || 20) * 2)
         });
       }
 
-      return {
+      const result = {
         city: city || "Detected Location",
         country: country || "",
         latitude: lat,
         longitude: lon,
         aqi: aqi,
-        category: category,
-        category_level: category.toLowerCase().replace(/ /g, '_'),
-        color: color,
-        bg_color: bg_color,
-        health_guidance: health_guidance,
+        category: meta.category,
+        category_level: meta.category_level,
+        color: meta.color,
+        bg_color: meta.bg_color,
+        health_guidance: meta.health_guidance,
         dominant_pollutant: "PM2.5",
-        pm2_5: currentAq.pm2_5 || 35.0,
-        pm10: currentAq.pm10 || 55.0,
-        carbon_monoxide: currentAq.carbon_monoxide || 800.0,
-        nitrogen_dioxide: currentAq.nitrogen_dioxide || 24.0,
-        ozone: currentAq.ozone || 45.0,
+        pm2_5: currentAq.pm2_5 != null ? currentAq.pm2_5 : 35.0,
+        pm10: currentAq.pm10 != null ? currentAq.pm10 : 55.0,
+        carbon_monoxide: currentAq.carbon_monoxide != null ? currentAq.carbon_monoxide : 800.0,
+        nitrogen_dioxide: currentAq.nitrogen_dioxide != null ? currentAq.nitrogen_dioxide : 24.0,
+        ozone: currentAq.ozone != null ? currentAq.ozone : 45.0,
         temperature: wx.current ? wx.current.temperature_2m : 22.0,
         humidity: wx.current ? wx.current.relative_humidity_2m : 55.0,
         last_updated: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -128,13 +192,15 @@ export async function getCurrentAQI(lat, lon, city = '', country = '') {
         is_live: true,
         hourly_trends: hourly_trends
       };
+      cache.aqi.set(cacheKey, { data: result, expiry: Date.now() + TTL.AQI });
+      return result;
     }
   } catch (directErr) {
     console.error("Direct Open-Meteo error:", directErr);
   }
 
   // Simulated fallback if all networks fail
-  return {
+  const fallback = {
     city: city || "Offline Demo City",
     country: country || "",
     latitude: lat,
@@ -158,6 +224,7 @@ export async function getCurrentAQI(lat, lon, city = '', country = '') {
     is_live: false,
     hourly_trends: []
   };
+  return fallback;
 }
 
 export async function sendAIChat(message, history, aqiContext, userProfile) {
@@ -202,6 +269,14 @@ export async function sendAIChat(message, history, aqiContext, userProfile) {
 }
 
 export async function getDailyPlanner(city, aqi, pm2_5, userProfile, hourlyForecast) {
+  const profileKey = userProfile ? `${userProfile.has_children}_${userProfile.has_asthma_respiratory}_${userProfile.has_elderly}` : "default";
+  const cacheKey = `${city}_${aqi}_${profileKey}`;
+  
+  const cached = cache.planner.get(cacheKey);
+  if (cached && Date.now() < cached.expiry) {
+    return cached.data;
+  }
+
   try {
     const res = await fetch(`${API_BASE}/api/planner/daily`, {
       method: 'POST',
@@ -215,14 +290,16 @@ export async function getDailyPlanner(city, aqi, pm2_5, userProfile, hourlyForec
       })
     });
     if (res.ok) {
-      return await res.json();
+      const data = await res.json();
+      cache.planner.set(cacheKey, { data, expiry: Date.now() + TTL.PLANNER });
+      return data;
     }
   } catch (err) {
     console.warn("Daily planner request failed:", err);
   }
 
   // Client-side fallback routine
-  return {
+  const fallback = {
     date: new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }),
     overall_status: aqi > 150 ? "High Smog Alert: Unhealthy" : "Moderate Air Quality",
     safer_outdoor_windows: ["1:00 PM – 3:30 PM (Midday solar mixing window)"],
@@ -259,12 +336,18 @@ export async function getDailyPlanner(city, aqi, pm2_5, userProfile, hourlyForec
     ],
     critical_warnings: aqi > 150 ? ["Limit outdoor playtime for young children and seniors."] : []
   };
+  cache.planner.set(cacheKey, { data: fallback, expiry: Date.now() + TTL.PLANNER });
+  return fallback;
 }
 
 export async function getImpactPresets() {
+  if (cache.staticPresets) return cache.staticPresets;
   try {
     const res = await fetch(`${API_BASE}/api/impact/presets`);
-    if (res.ok) return await res.json();
+    if (res.ok) {
+      cache.staticPresets = await res.json();
+      return cache.staticPresets;
+    }
   } catch (err) {}
   return [];
 }
@@ -313,34 +396,54 @@ export async function getImpactSummary(actions) {
 }
 
 export async function getCommunityChallenges() {
+  if (cache.staticChallenges) return cache.staticChallenges;
   try {
     const res = await fetch(`${API_BASE}/api/community/challenges`);
-    if (res.ok) return await res.json();
+    if (res.ok) {
+      cache.staticChallenges = await res.json();
+      return cache.staticChallenges;
+    }
   } catch (err) {}
   return [];
 }
 
 export async function getSafetyTips() {
+  if (cache.staticTips) return cache.staticTips;
   try {
     const res = await fetch(`${API_BASE}/api/community/tips`);
-    if (res.ok) return await res.json();
+    if (res.ok) {
+      cache.staticTips = await res.json();
+      return cache.staticTips;
+    }
   } catch (err) {}
   return [];
 }
 
 export async function generateShareCard(city, aqi, category, keyAdvice) {
+  const cacheKey = `${city}_${aqi}_${category}`;
+  const cached = cache.shareCard.get(cacheKey);
+  if (cached && Date.now() < cached.expiry) {
+    return cached.data;
+  }
+
   try {
     const res = await fetch(`${API_BASE}/api/community/share-card`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ city, aqi, category, key_advice: keyAdvice })
     });
-    if (res.ok) return await res.json();
+    if (res.ok) {
+      const data = await res.json();
+      cache.shareCard.set(cacheKey, { data, expiry: Date.now() + TTL.SHARE_CARD });
+      return data;
+    }
   } catch (err) {}
 
-  return {
+  const fallback = {
     title: `Air Quality Alert: ${city} (AQI ${aqi})`,
     card_text: `🚨 BreatheWise Air Safety Alert for ${city}\nAQI: ${aqi} (${category})\nPriority: ${keyAdvice}\n\nWear an N95 mask outdoors, keep windows sealed during dawn and night, and run HEPA air filtration indoors.\n\nBreathe Better. Live Smarter. Protect Your Community.`,
-    formatted_html_snippet: `<div class='p-4 border rounded'><h4>${city} - AQI ${aqi} (${category})</h4><p>${keyAdvice}</p></div>`
+    formatted_html_snippet: `<div class='p-4 border rounded'><h4>${city} - AQI ${aqi} (${category})</h4><p>{keyAdvice}</p></div>`
   };
+  cache.shareCard.set(cacheKey, { data: fallback, expiry: Date.now() + TTL.SHARE_CARD });
+  return fallback;
 }

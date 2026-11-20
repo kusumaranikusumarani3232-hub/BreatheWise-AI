@@ -1,16 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Bot, 
   Send, 
-  Sparkles, 
   User, 
-  RefreshCw, 
-  ShieldCheck, 
-  AlertCircle, 
   Cpu, 
-  Info, 
-  Trash2,
-  ChevronRight
+  Trash2 
 } from 'lucide-react';
 import { sendAIChat } from '../services/api';
 
@@ -24,31 +18,29 @@ const QUICK_PROMPTS = [
 ];
 
 export default function AIAssistantPage({ aqiData, userProfile }) {
-  const [messages, setMessages] = useState(() => {
-    return [
-      {
-        role: "assistant",
-        content: `👋 **Welcome to BreatheWise AI!** I am your personalized atmospheric safety assistant.\n\n` +
-          `I am monitoring live conditions in **${aqiData?.city || 'your area'}** ` +
-          `(Current AQI: **${aqiData?.aqi || '—'}**, Category: **${aqiData?.category || 'Moderate'}**).\n\n` +
-          `Ask me anything about daily smog protection, outdoor workout windows, children's school safety, or affordable indoor air filtration.`,
-        mode: "system",
-        model: "breathewise-core"
-      }
-    ];
-  });
+  const [messages, setMessages] = useState(() => [
+    {
+      role: "assistant",
+      content: `👋 **Welcome to BreatheWise AI!** I am your personalized atmospheric safety assistant.\n\n` +
+        `I am monitoring live conditions in **${aqiData?.city || 'your area'}** ` +
+        `(Current AQI: **${aqiData?.aqi || '—'}**, Category: **${aqiData?.category || 'Moderate'}**).\n\n` +
+        `Ask me anything about daily smog protection, outdoor workout windows, children's school safety, or affordable indoor air filtration.`,
+      mode: "system",
+      model: "breathewise-core"
+    }
+  ]);
 
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef(null);
 
-  const scrollToBottom = () => {
+  const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  }, []);
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, loading]);
+  }, [messages, loading, scrollToBottom]);
 
   const handleSend = async (textToSend) => {
     const query = textToSend || input;
@@ -101,7 +93,7 @@ export default function AIAssistantPage({ aqiData, userProfile }) {
     }
   };
 
-  const handleClearChat = () => {
+  const handleClearChat = useCallback(() => {
     setMessages([
       {
         role: "assistant",
@@ -109,7 +101,7 @@ export default function AIAssistantPage({ aqiData, userProfile }) {
         mode: "system"
       }
     ]);
-  };
+  }, [aqiData?.city, aqiData?.aqi]);
 
   return (
     <div className="flex flex-col h-[calc(100vh-8.5rem)] max-w-5xl mx-auto bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">

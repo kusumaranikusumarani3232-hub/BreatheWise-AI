@@ -1,15 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   TrendingDown, 
   PlusCircle, 
   CheckCircle2, 
-  Car, 
-  Bus, 
-  Flame, 
-  Zap, 
-  HelpCircle, 
   Trash2, 
-  Calendar,
   AlertCircle
 } from 'lucide-react';
 import { 
@@ -84,7 +78,7 @@ export default function ImpactTrackerPage() {
     } catch (e) {}
   }, [actions]);
 
-  const handleAddAction = (e) => {
+  const handleAddAction = useCallback((e) => {
     e.preventDefault();
     let label = "Sustainable Commute";
     let co2 = 0;
@@ -124,11 +118,11 @@ export default function ImpactTrackerPage() {
 
     setActions(prev => [newAction, ...prev]);
     setIsAdding(false);
-  };
+  }, [selectedType, customKm]);
 
-  const handleDeleteAction = (id) => {
+  const handleDeleteAction = useCallback((id) => {
     setActions(prev => prev.filter(a => a.id !== id));
-  };
+  }, []);
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">

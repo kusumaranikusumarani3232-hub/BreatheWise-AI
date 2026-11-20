@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, memo } from 'react';
 import { 
   ResponsiveContainer, 
   AreaChart, 
@@ -9,39 +9,34 @@ import {
   ReferenceLine,
   CartesianGrid 
 } from 'recharts';
-import { Clock, TrendingUp, Info } from 'lucide-react';
+import { Clock, TrendingUp } from 'lucide-react';
 
-export default function TrendChart({ hourlyData = [] }) {
+function TrendChartComponent({ hourlyData = [] }) {
   const [metric, setMetric] = useState('us_aqi'); // 'us_aqi' | 'pm2_5' | 'pm10'
 
-  if (!hourlyData || hourlyData.length === 0) {
-    return (
-      <div className="bg-white rounded-2xl border border-slate-200/90 p-6 text-center text-slate-400">
-        <Clock className="w-8 h-8 mx-auto mb-2 text-slate-300" />
-        <p className="text-sm">Hourly historical and forecast data is loading or temporarily unavailable for this station.</p>
-      </div>
-    );
-  }
+  // Memoize formatted points to avoid re-parsing date strings on every render
+  const formattedData = useMemo(() => {
+    if (!hourlyData || hourlyData.length === 0) return [];
+    return hourlyData.map((d) => {
+      let label = d.time;
+      if (d.time.includes('T')) {
+        const parts = d.time.split('T');
+        const timePart = parts[1]?.slice(0, 5) || '';
+        const datePart = parts[0]?.slice(5) || ''; // MM-DD
+        label = `${timePart} (${datePart})`;
+      }
+      return {
+        time: label,
+        rawTime: d.time,
+        us_aqi: d.us_aqi,
+        pm2_5: d.pm2_5,
+        pm10: d.pm10,
+      };
+    });
+  }, [hourlyData]);
 
-  // Format data for chart display
-  const formattedData = hourlyData.map((d) => {
-    let label = d.time;
-    if (d.time.includes('T')) {
-      const parts = d.time.split('T');
-      const timePart = parts[1]?.slice(0, 5) || '';
-      const datePart = parts[0]?.slice(5) || ''; // MM-DD
-      label = `${timePart} (${datePart})`;
-    }
-    return {
-      time: label,
-      rawTime: d.time,
-      us_aqi: d.us_aqi,
-      pm2_5: d.pm2_5,
-      pm10: d.pm10,
-    };
-  });
-
-  const getMetricConfig = () => {
+  // Memoize metric configuration
+  const config = useMemo(() => {
     switch (metric) {
       case 'pm2_5':
         return {
@@ -74,9 +69,16 @@ export default function TrendChart({ hourlyData = [] }) {
           thresholdLabel: 'Unhealthy AQI Threshold (150)',
         };
     }
-  };
+  }, [metric]);
 
-  const config = getMetricConfig();
+  if (!hourlyData || hourlyData.length === 0) {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-200/90 p-6 text-center text-slate-400">
+        <Clock className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+        <p className="text-sm">Hourly historical and forecast data is loading or temporarily unavailable for this station.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200/90 p-5 sm:p-6 shadow-xs">
@@ -191,3 +193,5 @@ export default function TrendChart({ hourlyData = [] }) {
     </div>
   );
 }
+
+export default memo(TrendChartComponent);

@@ -1,6 +1,7 @@
 import datetime
+import time
 import httpx
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from models.schemas import AQIResponse, LocationItem, HourlyDataPoint
 from utils.aqi_calculator import get_aqi_category_info, calculate_aqi_from_pm
 
@@ -17,34 +18,65 @@ PRESET_CITIES = [
     {"name": "Sydney", "country": "Australia", "latitude": -33.8678, "longitude": 151.2073, "admin1": "New South Wales"},
 ]
 
+# TTL Cache settings
+AQI_CACHE_TTL_SEC = 300       # 5 minutes
+SEARCH_CACHE_TTL_SEC = 1800   # 30 minutes
+
 class AQIService:
+    def __init__(self):
+        # Shared connection-pooled HTTP client
+        self._client: Optional[httpx.AsyncClient] = None
+        self._aqi_cache: Dict[str, Tuple[float, AQIResponse]] = {}
+        self._search_cache: Dict[str, Tuple[float, List[LocationItem]]] = {}
+
+    def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(
+                timeout=8.0,
+                limits=httpx.Limits(max_keepalive_connections=20, max_connections=50)
+            )
+        return self._client
+
+    async def close(self):
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
+
     async def search_cities(self, query: str) -> List[LocationItem]:
         query = query.strip()
         if not query:
             return [LocationItem(**c) for c in PRESET_CITIES[:5]]
 
+        cache_key = query.lower()
+        now = time.time()
+        if cache_key in self._search_cache:
+            ts, cached_res = self._search_cache[cache_key]
+            if now - ts < SEARCH_CACHE_TTL_SEC:
+                return cached_res
+
+        client = self._get_client()
         try:
-            async with httpx.AsyncClient(timeout=6.0) as client:
-                resp = await client.get(
-                    "https://geocoding-api.open-meteo.com/v1/search",
-                    params={"name": query, "count": 6, "language": "en", "format": "json"}
-                )
-                if resp.status_code == 200:
-                    data = resp.json()
-                    results = data.get("results", [])
-                    if results:
-                        return [
-                            LocationItem(
-                                id=item.get("id"),
-                                name=item.get("name"),
-                                country=item.get("country", ""),
-                                admin1=item.get("admin1", ""),
-                                latitude=item.get("latitude"),
-                                longitude=item.get("longitude"),
-                                timezone=item.get("timezone", "UTC")
-                            )
-                            for item in results
-                        ]
+            resp = await client.get(
+                "https://geocoding-api.open-meteo.com/v1/search",
+                params={"name": query, "count": 6, "language": "en", "format": "json"}
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                results = data.get("results", [])
+                if results:
+                    items = [
+                        LocationItem(
+                            id=item.get("id"),
+                            name=item.get("name"),
+                            country=item.get("country", ""),
+                            admin1=item.get("admin1", ""),
+                            latitude=item.get("latitude"),
+                            longitude=item.get("longitude"),
+                            timezone=item.get("timezone", "UTC")
+                        )
+                        for item in results
+                    ]
+                    self._search_cache[cache_key] = (now, items)
+                    return items
         except Exception:
             pass
 
@@ -53,112 +85,123 @@ class AQIService:
             LocationItem(**c) for c in PRESET_CITIES 
             if query.lower() in c["name"].lower() or query.lower() in c["country"].lower()
         ]
-        return matches if matches else [LocationItem(**PRESET_CITIES[0])]
+        fallback_res = matches if matches else [LocationItem(**PRESET_CITIES[0])]
+        self._search_cache[cache_key] = (now, fallback_res)
+        return fallback_res
 
     async def get_aqi(self, latitude: float, longitude: float, city_name: str = "", country_name: str = "") -> AQIResponse:
+        # Cache lookup (rounded to 2 decimal places ~1km precision)
+        cache_key = f"{round(latitude, 2)}_{round(longitude, 2)}"
+        now = time.time()
+        if cache_key in self._aqi_cache:
+            ts, cached_aqi = self._aqi_cache[cache_key]
+            if now - ts < AQI_CACHE_TTL_SEC:
+                # Update display city name if provided
+                if city_name and cached_aqi.city != city_name:
+                    return cached_aqi.model_copy(update={"city": city_name, "country": country_name or cached_aqi.country})
+                return cached_aqi
+
         now_iso = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        client = self._get_client()
 
         # Try live Open-Meteo Air Quality & Weather API
         try:
-            async with httpx.AsyncClient(timeout=8.0) as client:
-                # 1. Fetch Air Quality
-                aq_url = "https://air-quality-api.open-meteo.com/v1/air-quality"
-                aq_params = {
-                    "latitude": latitude,
-                    "longitude": longitude,
-                    "current": "us_aqi,pm10,pm2_5,carbon_monoxide,nitrogen_dioxide,ozone",
-                    "hourly": "pm2_5,pm10,us_aqi",
-                    "past_hours": 24,
-                    "forecast_hours": 24,
-                }
-                aq_task = client.get(aq_url, params=aq_params)
+            # 1. Fetch Air Quality
+            aq_url = "https://air-quality-api.open-meteo.com/v1/air-quality"
+            aq_params = {
+                "latitude": latitude,
+                "longitude": longitude,
+                "current": "us_aqi,pm10,pm2_5,carbon_monoxide,nitrogen_dioxide,ozone",
+                "hourly": "pm2_5,pm10,us_aqi",
+                "past_hours": 24,
+                "forecast_hours": 24,
+            }
+            try:
+                aq_res = await client.get(aq_url, params=aq_params)
+            except Exception:
+                aq_res = None
 
-                # 2. Fetch Weather (temp & humidity)
-                wx_url = "https://api.open-meteo.com/v1/forecast"
-                wx_params = {
-                    "latitude": latitude,
-                    "longitude": longitude,
-                    "current": "temperature_2m,relative_humidity_2m",
-                }
-                wx_task = client.get(wx_url, params=wx_params)
+            try:
+                wx_res = await client.get(wx_url, params=wx_params)
+            except Exception:
+                wx_res = None
 
-                aq_res, wx_res = await aq_task, await wx_task
+            if aq_res is not None and aq_res.status_code == 200:
+                aq_data = aq_res.json()
+                current_aq = aq_data.get("current", {})
+                hourly = aq_data.get("hourly", {})
 
-                if aq_res.status_code == 200:
-                    aq_data = aq_res.json()
-                    current_aq = aq_data.get("current", {})
-                    hourly = aq_data.get("hourly", {})
+                us_aqi_val = current_aq.get("us_aqi")
+                pm2_5_val = current_aq.get("pm2_5")
+                pm10_val = current_aq.get("pm10")
+                co_val = current_aq.get("carbon_monoxide")
+                no2_val = current_aq.get("nitrogen_dioxide")
+                o3_val = current_aq.get("ozone")
 
-                    us_aqi_val = current_aq.get("us_aqi")
-                    pm2_5_val = current_aq.get("pm2_5")
-                    pm10_val = current_aq.get("pm10")
-                    co_val = current_aq.get("carbon_monoxide")
-                    no2_val = current_aq.get("nitrogen_dioxide")
-                    o3_val = current_aq.get("ozone")
+                # If AQI missing, compute from PM2.5/PM10
+                dominant_pol = "PM2.5"
+                if us_aqi_val is None or us_aqi_val == 0:
+                    calc_aqi, dominant_pol = calculate_aqi_from_pm(pm2_5_val, pm10_val)
+                    us_aqi_val = calc_aqi
 
-                    # If AQI missing, compute from PM2.5/PM10
-                    dominant_pol = "PM2.5"
-                    if us_aqi_val is None or us_aqi_val == 0:
-                        calc_aqi, dominant_pol = calculate_aqi_from_pm(pm2_5_val, pm10_val)
-                        us_aqi_val = calc_aqi
+                category_meta = get_aqi_category_info(us_aqi_val)
 
-                    category_meta = get_aqi_category_info(us_aqi_val)
+                # Weather parsing
+                temp_val, hum_val = None, None
+                if wx_res is not None and wx_res.status_code == 200:
+                    wx_data = wx_res.json()
+                    cur_wx = wx_data.get("current", {})
+                    temp_val = cur_wx.get("temperature_2m")
+                    hum_val = cur_wx.get("relative_humidity_2m")
 
-                    # Weather parsing
-                    temp_val, hum_val = None, None
-                    if wx_res.status_code == 200:
-                        wx_data = wx_res.json()
-                        cur_wx = wx_data.get("current", {})
-                        temp_val = cur_wx.get("temperature_2m")
-                        hum_val = cur_wx.get("relative_humidity_2m")
+                # Parse hourly points efficiently
+                times = hourly.get("time", [])
+                pm25_series = hourly.get("pm2_5", [])
+                pm10_series = hourly.get("pm10", [])
+                aqi_series = hourly.get("us_aqi", [])
 
-                    # Parse hourly points
-                    times = hourly.get("time", [])
-                    pm25_series = hourly.get("pm2_5", [])
-                    pm10_series = hourly.get("pm10", [])
-                    aqi_series = hourly.get("us_aqi", [])
+                hourly_points = []
+                step = 2
+                for i in range(0, len(times), step):
+                    h_time = times[i]
+                    h_aqi = aqi_series[i] if i < len(aqi_series) else None
+                    h_pm25 = pm25_series[i] if i < len(pm25_series) else None
+                    h_pm10 = pm10_series[i] if i < len(pm10_series) else None
+                    if h_aqi is None and h_pm25 is not None:
+                        h_aqi, _ = calculate_aqi_from_pm(h_pm25, h_pm10)
+                    hourly_points.append(HourlyDataPoint(
+                        time=h_time,
+                        pm2_5=round(h_pm25, 1) if h_pm25 is not None else None,
+                        pm10=round(h_pm10, 1) if h_pm10 is not None else None,
+                        us_aqi=h_aqi
+                    ))
 
-                    hourly_points = []
-                    # Keep every 2nd or 3rd hour to deliver crisp charts
-                    step = 2
-                    for i in range(0, len(times), step):
-                        h_time = times[i]
-                        h_aqi = aqi_series[i] if i < len(aqi_series) else None
-                        h_pm25 = pm25_series[i] if i < len(pm25_series) else None
-                        h_pm10 = pm10_series[i] if i < len(pm10_series) else None
-                        if h_aqi is None and h_pm25 is not None:
-                            h_aqi, _ = calculate_aqi_from_pm(h_pm25, h_pm10)
-                        hourly_points.append(HourlyDataPoint(
-                            time=h_time,
-                            pm2_5=round(h_pm25, 1) if h_pm25 is not None else None,
-                            pm10=round(h_pm10, 1) if h_pm10 is not None else None,
-                            us_aqi=h_aqi
-                        ))
-
-                    return AQIResponse(
-                        city=city_name or "Detected Location",
-                        country=country_name or "",
-                        latitude=latitude,
-                        longitude=longitude,
-                        aqi=us_aqi_val,
-                        category=category_meta["category"],
-                        category_level=category_meta["category_level"],
-                        color=category_meta["color"],
-                        bg_color=category_meta["bg_color"],
-                        health_guidance=category_meta["health_guidance"],
-                        dominant_pollutant=dominant_pol,
-                        pm2_5=round(pm2_5_val, 1) if pm2_5_val is not None else None,
-                        pm10=round(pm10_val, 1) if pm10_val is not None else None,
-                        carbon_monoxide=round(co_val, 1) if co_val is not None else None,
-                        nitrogen_dioxide=round(no2_val, 1) if no2_val is not None else None,
-                        ozone=round(o3_val, 1) if o3_val is not None else None,
-                        temperature=temp_val,
-                        humidity=hum_val,
-                        last_updated=now_iso,
-                        data_source="Open-Meteo European Atmosphere Monitoring",
-                        is_live=True,
-                        hourly_trends=hourly_points
-                    )
+                result = AQIResponse(
+                    city=city_name or "Detected Location",
+                    country=country_name or "",
+                    latitude=latitude,
+                    longitude=longitude,
+                    aqi=us_aqi_val,
+                    category=category_meta["category"],
+                    category_level=category_meta["category_level"],
+                    color=category_meta["color"],
+                    bg_color=category_meta["bg_color"],
+                    health_guidance=category_meta["health_guidance"],
+                    dominant_pollutant=dominant_pol,
+                    pm2_5=round(pm2_5_val, 1) if pm2_5_val is not None else None,
+                    pm10=round(pm10_val, 1) if pm10_val is not None else None,
+                    carbon_monoxide=round(co_val, 1) if co_val is not None else None,
+                    nitrogen_dioxide=round(no2_val, 1) if no2_val is not None else None,
+                    ozone=round(o3_val, 1) if o3_val is not None else None,
+                    temperature=temp_val,
+                    humidity=hum_val,
+                    last_updated=now_iso,
+                    data_source="Open-Meteo European Atmosphere Monitoring",
+                    is_live=True,
+                    hourly_trends=hourly_points
+                )
+                self._aqi_cache[cache_key] = (now, result)
+                return result
         except Exception:
             pass
 
@@ -179,7 +222,7 @@ class AQIService:
                 us_aqi=int(sim_aqi + (offset % 5) * 5)
             ))
 
-        return AQIResponse(
+        fallback_result = AQIResponse(
             city=city_name or "Demo Location",
             country=country_name or "",
             latitude=latitude,
@@ -203,5 +246,6 @@ class AQIService:
             is_live=False,
             hourly_trends=demo_hourly
         )
+        return fallback_result
 
 aqi_service = AQIService()

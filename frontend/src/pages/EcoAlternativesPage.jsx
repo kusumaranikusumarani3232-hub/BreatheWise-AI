@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   Leaf, 
   Bus, 
@@ -7,10 +7,6 @@ import {
   Car, 
   Zap, 
   Flame, 
-  TrendingDown, 
-  CheckCircle2, 
-  ArrowRight,
-  ShieldAlert,
   Sliders
 } from 'lucide-react';
 
@@ -65,11 +61,13 @@ const ECO_ACTIONS = [
 export default function EcoAlternativesPage({ aqiData, setActiveTab }) {
   const [tripKm, setTripKm] = useState(12);
 
-  // Carbon comparison math (kg CO2e for the trip)
-  const soloCarCo2 = (tripKm * 0.18).toFixed(2);
-  const carpoolCo2 = (tripKm * 0.09).toFixed(2);
-  const transitCo2 = (tripKm * 0.04).toFixed(2);
-  const activeCo2 = "0.00";
+  // Memoized carbon comparison math (kg CO2e for the trip)
+  const { soloCarCo2, carpoolCo2, transitCo2, activeCo2 } = useMemo(() => ({
+    soloCarCo2: (tripKm * 0.18).toFixed(2),
+    carpoolCo2: (tripKm * 0.09).toFixed(2),
+    transitCo2: (tripKm * 0.04).toFixed(2),
+    activeCo2: "0.00"
+  }), [tripKm]);
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">

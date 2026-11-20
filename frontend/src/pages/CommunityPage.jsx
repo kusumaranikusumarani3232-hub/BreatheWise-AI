@@ -1,16 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Users, 
-  Share2, 
-  Award, 
-  BookOpen, 
-  CheckCircle2, 
   Copy, 
-  Sparkles, 
-  ShieldAlert, 
-  ArrowRight,
-  ExternalLink,
-  Flame,
   Check
 } from 'lucide-react';
 import { getCommunityChallenges, getSafetyTips, generateShareCard } from '../services/api';
@@ -44,19 +35,19 @@ export default function CommunityPage({ aqiData }) {
     }
   }, [aqiData]);
 
-  const togglePledge = (id) => {
+  const togglePledge = useCallback((id) => {
     setPledged(prev => ({
       ...prev,
       [id]: !prev[id]
     }));
-  };
+  }, []);
 
-  const handleCopyCard = () => {
+  const handleCopyCard = useCallback(() => {
     if (!shareData) return;
     navigator.clipboard.writeText(shareData.card_text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
-  };
+  }, [shareData]);
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
