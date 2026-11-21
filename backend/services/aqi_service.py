@@ -85,7 +85,7 @@ class AQIService:
             LocationItem(**c) for c in PRESET_CITIES 
             if query.lower() in c["name"].lower() or query.lower() in c["country"].lower()
         ]
-        fallback_res = matches if matches else [LocationItem(**PRESET_CITIES[0])]
+        fallback_res = matches
         self._search_cache[cache_key] = (now, fallback_res)
         return fallback_res
 
@@ -121,6 +121,13 @@ class AQIService:
             except Exception:
                 aq_res = None
 
+            # 2. Fetch Weather (temperature & humidity)
+            wx_url = "https://api.open-meteo.com/v1/forecast"
+            wx_params = {
+                "latitude": latitude,
+                "longitude": longitude,
+                "current": "temperature_2m,relative_humidity_2m",
+            }
             try:
                 wx_res = await client.get(wx_url, params=wx_params)
             except Exception:

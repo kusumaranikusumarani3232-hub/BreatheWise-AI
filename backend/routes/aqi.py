@@ -24,13 +24,18 @@ async def get_current_aqi(
 
 @router.get("/city/{city_name}", response_model=AQIResponse)
 async def get_aqi_by_city_name(city_name: str):
-    locations = await aqi_service.search_cities(city_name)
-    if not locations:
-        raise HTTPException(status_code=404, detail="City not found")
-    loc = locations[0]
-    return await aqi_service.get_aqi(
-        latitude=loc.latitude,
-        longitude=loc.longitude,
-        city_name=loc.name,
-        country_name=loc.country
-    )
+    try:
+        locations = await aqi_service.search_cities(city_name)
+        if not locations:
+            raise HTTPException(status_code=404, detail="City not found")
+        loc = locations[0]
+        return await aqi_service.get_aqi(
+            latitude=loc.latitude,
+            longitude=loc.longitude,
+            city_name=loc.name,
+            country_name=loc.country
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch air quality data: {str(e)}")
